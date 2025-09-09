@@ -265,7 +265,7 @@ class GameManager {
                 this.boss.update(this.player);
                 
                 // ボス弾発射
-                const bossBullets = this.boss.shoot();
+                const bossBullets = this.boss.shoot(this.player);
                 if (bossBullets) {
                     bossBullets.forEach(bullet => {
                         this.bulletManager.addBossBullet(

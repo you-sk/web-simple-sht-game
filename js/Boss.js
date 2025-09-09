@@ -86,8 +86,9 @@ class Boss extends GameObject {
 
     /**
      * 射撃
+     * @param {Player} player - プレイヤーオブジェクト（狙い撃ち用）
      */
-    shoot() {
+    shoot(player) {
         if (!this.vulnerable || this.attackCooldown > 0) {
             return null;
         }
