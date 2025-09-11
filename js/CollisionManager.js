@@ -10,14 +10,17 @@ class CollisionManager {
     /**
      * すべての衝突判定を実行
      */
-    checkAllCollisions(player, enemies, boss, bulletManager, effectManager, onScore, onBossDefeated) {
+    checkAllCollisions(player, enemies, boss, bulletManager, effectManager, powerUpManager, onScore, onBossDefeated) {
         // プレイヤー弾と敵の衝突
-        this.checkBulletEnemyCollisions(bulletManager, enemies, effectManager, onScore);
+        this.checkBulletEnemyCollisions(bulletManager, enemies, effectManager, powerUpManager, onScore);
 
         // プレイヤー弾とボスの衝突
         if (boss && boss.active) {
-            this.checkBulletBossCollisions(bulletManager, boss, effectManager, onScore, onBossDefeated);
+            this.checkBulletBossCollisions(bulletManager, boss, effectManager, powerUpManager, onScore, onBossDefeated);
         }
+
+        // プレイヤーとパワーアップの衝突
+        this.checkPlayerPowerUpCollisions(player, powerUpManager);
 
         // プレイヤーと敵の衝突
         if (this.checkPlayerEnemyCollisions(player, enemies, effectManager)) {
@@ -35,7 +38,7 @@ class CollisionManager {
     /**
      * プレイヤー弾と敵の衝突判定
      */
-    checkBulletEnemyCollisions(bulletManager, enemies, effectManager, onScore) {
+    checkBulletEnemyCollisions(bulletManager, enemies, effectManager, powerUpManager, onScore) {
         for (let i = bulletManager.playerBullets.length - 1; i >= 0; i--) {
             const bullet = bulletManager.playerBullets[i];
             
@@ -49,6 +52,11 @@ class CollisionManager {
                     // スコア加算
                     onScore(enemy.score);
                     
+                    // パワーアップをドロップする可能性
+                    if (powerUpManager) {
+                        powerUpManager.spawn(enemy.centerX, enemy.centerY);
+                    }
+                    
                     // 削除
                     enemies.splice(j, 1);
                     bulletManager.playerBullets.splice(i, 1);
@@ -61,7 +69,7 @@ class CollisionManager {
     /**
      * プレイヤー弾とボスの衝突判定
      */
-    checkBulletBossCollisions(bulletManager, boss, effectManager, onScore, onBossDefeated) {
+    checkBulletBossCollisions(bulletManager, boss, effectManager, powerUpManager, onScore, onBossDefeated) {
         for (let i = bulletManager.playerBullets.length - 1; i >= 0; i--) {
             const bullet = bulletManager.playerBullets[i];
             
@@ -75,6 +83,10 @@ class CollisionManager {
                         // ボス撃破
                         effectManager.addExplosion(boss.centerX, boss.centerY, boss.color, 100);
                         onScore(10000 * boss.stage);
+                        // ボスからは確定でパワーアップドロップ
+                        if (powerUpManager) {
+                            powerUpManager.spawn(boss.centerX, boss.centerY, true);
+                        }
                         onBossDefeated();
                     } else {
                         onScore(500);
@@ -86,6 +98,25 @@ class CollisionManager {
                 
                 // 弾削除
                 bulletManager.playerBullets.splice(i, 1);
+            }
+        }
+    }
+    
+    /**
+     * プレイヤーとパワーアップの衝突判定
+     */
+    checkPlayerPowerUpCollisions(player, powerUpManager) {
+        if (!player.active || !powerUpManager) return;
+        
+        for (let i = powerUpManager.powerUps.length - 1; i >= 0; i--) {
+            const powerUp = powerUpManager.powerUps[i];
+            
+            if (this.checkCollision(player, powerUp)) {
+                // パワーアップを適用
+                player.applyPowerUp(powerUp.type);
+                
+                // パワーアップを削除
+                powerUpManager.powerUps.splice(i, 1);
             }
         }
     }

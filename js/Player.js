@@ -7,12 +7,25 @@ class Player extends GameObject {
     constructor(x, y) {
         super(x, y, 40, 40);
         this.speed = 5;
+        this.baseSpeed = 5;
         this.color = '#3498db';
         this.shotCooldown = 0;
         this.shotInterval = 15;
+        this.baseShotInterval = 15;
         this.lives = 3;
         this.invulnerableTime = 0;
         this.invulnerableDuration = 120; // 2秒間の無敵時間
+        
+        // パワーアップ関連
+        this.weaponType = 'normal'; // normal, 3way, laser, homing, spread
+        this.shield = 0; // シールドのヒット数
+        this.bombs = 1; // ボムの数
+        this.speedBoost = false;
+        this.rapidFire = false;
+        this.powerUpDuration = {
+            speed: 0,
+            rapid: 0
+        };
     }
 
     /**
@@ -29,6 +42,23 @@ class Player extends GameObject {
         // 無敵時間の更新
         if (this.invulnerableTime > 0) {
             this.invulnerableTime--;
+        }
+        
+        // パワーアップ効果時間の更新
+        if (this.powerUpDuration.speed > 0) {
+            this.powerUpDuration.speed--;
+            if (this.powerUpDuration.speed === 0) {
+                this.speedBoost = false;
+                this.speed = this.baseSpeed;
+            }
+        }
+        
+        if (this.powerUpDuration.rapid > 0) {
+            this.powerUpDuration.rapid--;
+            if (this.powerUpDuration.rapid === 0) {
+                this.rapidFire = false;
+                this.shotInterval = this.baseShotInterval;
+            }
         }
     }
 
@@ -64,6 +94,17 @@ class Player extends GameObject {
         ctx.fill();
         
         ctx.globalAlpha = 1.0;
+        
+        // シールドの描画
+        if (this.shield > 0) {
+            ctx.strokeStyle = '#A8E6CF';
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.beginPath();
+            ctx.arc(this.centerX, this.centerY, this.width * 0.8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
     }
 
     /**
@@ -109,6 +150,12 @@ class Player extends GameObject {
      */
     takeDamage() {
         if (this.invulnerableTime <= 0 && this.active) {
+            // シールドがある場合はシールドを消費
+            if (this.shield > 0) {
+                this.shield--;
+                return false;
+            }
+            
             this.lives--;
             this.invulnerableTime = this.invulnerableDuration;
             
@@ -128,6 +175,48 @@ class Player extends GameObject {
     }
 
     /**
+     * パワーアップを適用
+     * @param {string} type パワーアップタイプ
+     */
+    applyPowerUp(type) {
+        switch(type) {
+            case '3way':
+            case 'laser':
+            case 'homing':
+            case 'spread':
+                this.weaponType = type;
+                break;
+            case 'shield':
+                this.shield = Math.min(this.shield + 3, 9); // 最大9ヒットまで
+                break;
+            case 'speed':
+                this.speedBoost = true;
+                this.speed = this.baseSpeed * 1.5;
+                this.powerUpDuration.speed = 600; // 10秒間
+                break;
+            case 'rapid':
+                this.rapidFire = true;
+                this.shotInterval = Math.max(3, this.baseShotInterval / 2);
+                this.powerUpDuration.rapid = 600; // 10秒間
+                break;
+            case 'bomb':
+                this.bombs = Math.min(this.bombs + 1, 5); // 最大5個まで
+                break;
+        }
+    }
+    
+    /**
+     * ボムを使用
+     */
+    useBomb() {
+        if (this.bombs > 0) {
+            this.bombs--;
+            return true;
+        }
+        return false;
+    }
+    
+    /**
      * リセット
      */
     reset(x, y) {
@@ -137,6 +226,14 @@ class Player extends GameObject {
         this.lives = 3;
         this.invulnerableTime = 0;
         this.shotCooldown = 0;
+        this.weaponType = 'normal';
+        this.shield = 0;
+        this.bombs = 1;
+        this.speedBoost = false;
+        this.rapidFire = false;
+        this.speed = this.baseSpeed;
+        this.shotInterval = this.baseShotInterval;
+        this.powerUpDuration = { speed: 0, rapid: 0 };
     }
 }
 

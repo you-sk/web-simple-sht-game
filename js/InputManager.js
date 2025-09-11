@@ -9,7 +9,9 @@ class InputManager {
             ArrowLeft: false,
             ArrowRight: false,
             ' ': false,
-            Enter: false
+            Enter: false,
+            'b': false,
+            'B': false
         };
         
         this.gamepadIndex = null;
@@ -48,7 +50,8 @@ class InputManager {
             left: false,
             right: false,
             shoot: false,
-            action: false
+            action: false,
+            bomb: false
         };
 
         // クールダウン処理
@@ -62,6 +65,7 @@ class InputManager {
         input.left = this.keys.ArrowLeft;
         input.right = this.keys.ArrowRight;
         input.shoot = this.keys[' '];
+        input.bomb = this.keys['b'] || this.keys['B'];
         
         if (this.keys.Enter && this.cooldown <= 0) {
             input.action = true;
@@ -91,6 +95,7 @@ class InputManager {
 
             // ボタン
             if (gamepad.buttons[0].pressed) input.shoot = true;
+            if (gamepad.buttons[1].pressed || gamepad.buttons[2].pressed) input.bomb = true;
             
             if ((gamepad.buttons[0].pressed || gamepad.buttons[9].pressed) && this.cooldown <= 0) {
                 input.action = true;

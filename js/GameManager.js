@@ -5,6 +5,7 @@ import Boss from './Boss.js';
 import EffectManager from './EffectManager.js';
 import InputManager from './InputManager.js';
 import CollisionManager from './CollisionManager.js';
+import { PowerUpManager } from './PowerUp.js';
 import { stageData, enemyData, tileColors } from './StageData.js';
 
 /**
@@ -43,6 +44,7 @@ class GameManager {
         this.effectManager = new EffectManager();
         this.inputManager = new InputManager();
         this.collisionManager = new CollisionManager();
+        this.powerUpManager = new PowerUpManager();
         
         // ステージデータ
         this.stageData = null;
@@ -134,6 +136,7 @@ class GameManager {
         this.boss = null;
         this.bulletManager.clear();
         this.effectManager.clear();
+        this.powerUpManager.clear();
         
         // 背景初期化
         this.background = { speed: 2, elements: [] };
@@ -235,7 +238,12 @@ class GameManager {
             
             // 射撃
             if (input.shoot && this.player.shoot()) {
-                this.bulletManager.addPlayerDoubleBullets(this.player);
+                this.bulletManager.addPlayerBullets(this.player, this.enemies);
+            }
+            
+            // ボム使用（Bキーまたはゲームパッドボタン）
+            if (input.bomb && this.player.useBomb()) {
+                this.useBomb();
             }
         }
     }
@@ -260,6 +268,7 @@ class GameManager {
             this.player.update();
             this.bulletManager.update(this.canvasWidth, this.canvasHeight);
             this.effectManager.update();
+            this.powerUpManager.update();
             
             if (this.boss && this.boss.active) {
                 this.boss.update(this.player);
@@ -362,22 +371,25 @@ class GameManager {
         if (this.isInvincible) {
             // 無敵モード時はプレイヤーへのダメージを無視
             this.collisionManager.checkBulletEnemyCollisions(
-                this.bulletManager, this.enemies, this.effectManager, 
+                this.bulletManager, this.enemies, this.effectManager, this.powerUpManager,
                 (score) => this.score += score
             );
             
             if (this.boss && this.boss.active) {
                 this.collisionManager.checkBulletBossCollisions(
-                    this.bulletManager, this.boss, this.effectManager,
+                    this.bulletManager, this.boss, this.effectManager, this.powerUpManager,
                     (score) => this.score += score,
                     () => this.onBossDefeated()
                 );
             }
+            
+            // パワーアップは無敵モードでも取得可能
+            this.collisionManager.checkPlayerPowerUpCollisions(this.player, this.powerUpManager);
         } else {
             // 通常の衝突判定
             const gameOver = this.collisionManager.checkAllCollisions(
                 this.player, this.enemies, this.boss,
-                this.bulletManager, this.effectManager,
+                this.bulletManager, this.effectManager, this.powerUpManager,
                 (score) => this.score += score,
                 () => this.onBossDefeated()
             );
@@ -389,9 +401,50 @@ class GameManager {
     }
 
     /**
+     * ボムを使用
+     */
+    useBomb() {
+        // 画面上のすべての敵弾を消去
+        this.bulletManager.enemyBullets = [];
+        this.bulletManager.bossBullets = [];
+        
+        // すべての敵にダメージを与える
+        this.enemies.forEach(enemy => {
+            if (enemy.active) {
+                enemy.hp -= 5;
+                if (enemy.hp <= 0) {
+                    enemy.active = false;
+                    this.effectManager.createExplosion(enemy.centerX, enemy.centerY);
+                    this.score += enemy.scoreValue || 100;
+                    // パワーアップドロップ
+                    this.powerUpManager.spawn(enemy.centerX, enemy.centerY);
+                }
+            }
+        });
+        
+        // ボスにダメージを与える
+        if (this.boss && this.boss.active && this.boss.vulnerable) {
+            this.boss.hp -= 10;
+            if (this.boss.hp <= 0) {
+                this.boss.active = false;
+                this.effectManager.createBossExplosion(this.boss.centerX, this.boss.centerY);
+                this.score += 5000;
+                this.powerUpManager.spawn(this.boss.centerX, this.boss.centerY, true);
+                this.onBossDefeated();
+            }
+        }
+        
+        // ボムエフェクト
+        this.effectManager.createExplosion(this.canvasWidth / 2, this.canvasHeight / 2, 300);
+    }
+    
+    /**
      * ボス撃破時の処理
      */
     onBossDefeated() {
+        // ボスからパワーアップを確定ドロップ
+        this.powerUpManager.spawn(this.boss.centerX, this.boss.centerY, true);
+        
         if (this.currentStage < 3) {
             this.gameState = 'stage_clear';
         } else {
@@ -454,6 +507,7 @@ class GameManager {
     drawAllGameElements() {
         this.drawBackground();
         this.enemies.forEach(enemy => enemy.draw(this.ctx));
+        this.powerUpManager.draw(this.ctx);
         if (this.player) this.player.draw(this.ctx);
         this.bulletManager.draw(this.ctx);
         if (this.boss && this.boss.active) this.boss.draw(this.ctx);
@@ -509,6 +563,39 @@ class GameManager {
         // ライフ表示
         if (this.player) {
             this.ctx.fillText(`LIVES: ${this.player.lives}`, 10, 60);
+            
+            // ボム表示
+            this.ctx.fillText(`BOMBS: ${this.player.bombs}`, 10, 85);
+            
+            // 武器タイプ表示
+            const weaponNames = {
+                'normal': 'NORMAL',
+                '3way': '3-WAY',
+                'laser': 'LASER',
+                'homing': 'HOMING',
+                'spread': 'SPREAD'
+            };
+            this.ctx.fillText(`WEAPON: ${weaponNames[this.player.weaponType] || 'NORMAL'}`, 10, 110);
+            
+            // パワーアップ状態表示
+            let powerUpY = 135;
+            if (this.player.shield > 0) {
+                this.ctx.fillStyle = '#A8E6CF';
+                this.ctx.fillText(`SHIELD: ${this.player.shield}`, 10, powerUpY);
+                powerUpY += 25;
+            }
+            if (this.player.speedBoost) {
+                this.ctx.fillStyle = '#FF8B94';
+                const timeLeft = Math.ceil(this.player.powerUpDuration.speed / 60);
+                this.ctx.fillText(`SPEED: ${timeLeft}s`, 10, powerUpY);
+                powerUpY += 25;
+            }
+            if (this.player.rapidFire) {
+                this.ctx.fillStyle = '#B4A7D6';
+                const timeLeft = Math.ceil(this.player.powerUpDuration.rapid / 60);
+                this.ctx.fillText(`RAPID: ${timeLeft}s`, 10, powerUpY);
+            }
+            this.ctx.fillStyle = 'white';
         }
         
         this.ctx.textAlign = 'right';
