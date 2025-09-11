@@ -10,7 +10,7 @@ class CollisionManager {
     /**
      * すべての衝突判定を実行
      */
-    checkAllCollisions(player, enemies, boss, bulletManager, effectManager, powerUpManager, onScore, onBossDefeated) {
+    checkAllCollisions(player, enemies, boss, bulletManager, effectManager, powerUpManager, onScore, onBossDefeated, onPowerUp, onPlayerDamage) {
         // プレイヤー弾と敵の衝突
         this.checkBulletEnemyCollisions(bulletManager, enemies, effectManager, powerUpManager, onScore);
 
@@ -20,15 +20,15 @@ class CollisionManager {
         }
 
         // プレイヤーとパワーアップの衝突
-        this.checkPlayerPowerUpCollisions(player, powerUpManager);
+        this.checkPlayerPowerUpCollisions(player, powerUpManager, onPowerUp);
 
         // プレイヤーと敵の衝突
-        if (this.checkPlayerEnemyCollisions(player, enemies, effectManager)) {
+        if (this.checkPlayerEnemyCollisions(player, enemies, effectManager, onPlayerDamage)) {
             return true; // ゲームオーバー
         }
 
         // プレイヤーと敵弾の衝突
-        if (this.checkPlayerBulletCollisions(player, bulletManager.getAllEnemyBullets(), effectManager)) {
+        if (this.checkPlayerBulletCollisions(player, bulletManager.getAllEnemyBullets(), effectManager, onPlayerDamage)) {
             return true; // ゲームオーバー
         }
 
@@ -105,7 +105,7 @@ class CollisionManager {
     /**
      * プレイヤーとパワーアップの衝突判定
      */
-    checkPlayerPowerUpCollisions(player, powerUpManager) {
+    checkPlayerPowerUpCollisions(player, powerUpManager, onPowerUp) {
         if (!player.active || !powerUpManager) return;
         
         for (let i = powerUpManager.powerUps.length - 1; i >= 0; i--) {
@@ -114,6 +114,11 @@ class CollisionManager {
             if (this.checkCollision(player, powerUp)) {
                 // パワーアップを適用
                 player.applyPowerUp(powerUp.type);
+                
+                // コールバックを実行
+                if (onPowerUp) {
+                    onPowerUp(powerUp.type, powerUp.x, powerUp.y);
+                }
                 
                 // パワーアップを削除
                 powerUpManager.powerUps.splice(i, 1);
@@ -124,13 +129,18 @@ class CollisionManager {
     /**
      * プレイヤーと敵の衝突判定
      */
-    checkPlayerEnemyCollisions(player, enemies, effectManager) {
+    checkPlayerEnemyCollisions(player, enemies, effectManager, onPlayerDamage) {
         if (!player.active || player.isInvulnerable()) return false;
 
         for (let enemy of enemies) {
             if (this.checkCollision(player, enemy)) {
                 // プレイヤー爆発エフェクト
                 effectManager.addExplosion(player.centerX, player.centerY, player.color, 50);
+                
+                // コールバックを実行
+                if (onPlayerDamage) {
+                    onPlayerDamage();
+                }
                 
                 // ダメージ処理
                 return player.takeDamage();
@@ -142,13 +152,18 @@ class CollisionManager {
     /**
      * プレイヤーと敵弾の衝突判定
      */
-    checkPlayerBulletCollisions(player, enemyBullets, effectManager) {
+    checkPlayerBulletCollisions(player, enemyBullets, effectManager, onPlayerDamage) {
         if (!player.active || player.isInvulnerable()) return false;
 
         for (let bullet of enemyBullets) {
             if (this.checkCircleRectCollision(bullet, player)) {
                 // プレイヤー爆発エフェクト
                 effectManager.addExplosion(player.centerX, player.centerY, player.color, 50);
+                
+                // コールバックを実行
+                if (onPlayerDamage) {
+                    onPlayerDamage();
+                }
                 
                 // ダメージ処理
                 return player.takeDamage();

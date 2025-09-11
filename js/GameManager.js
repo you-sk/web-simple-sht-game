@@ -7,6 +7,8 @@ import InputManager from './InputManager.js';
 import CollisionManager from './CollisionManager.js';
 import { PowerUpManager } from './PowerUp.js';
 import { stageData, enemyData, tileColors } from './StageData.js';
+import SoundManager from './SoundManager.js';
+import VisualEffects from './VisualEffects.js';
 
 /**
  * ゲーム全体を管理するクラス
@@ -45,6 +47,13 @@ class GameManager {
         this.inputManager = new InputManager();
         this.collisionManager = new CollisionManager();
         this.powerUpManager = new PowerUpManager();
+        this.soundManager = new SoundManager();
+        this.visualEffects = new VisualEffects(canvas);
+        
+        // コンボシステム
+        this.combo = 0;
+        this.comboTimer = 0;
+        this.lastKillTime = 0;
         
         // ステージデータ
         this.stageData = null;
@@ -75,10 +84,17 @@ class GameManager {
      */
     setupEventListeners() {
         // アクションボタン
-        this.actionButton.addEventListener('click', () => {
+        this.actionButton.addEventListener('click', async () => {
+            // サウンドマネージャーを初期化（ユーザー操作が必要）
+            if (!this.soundManager.isInitialized) {
+                await this.soundManager.init();
+            }
+            
             if (this.gameState === 'title') {
+                this.soundManager.playSE('powerUp');
                 this.init(1);
             } else if (this.gameState === 'endscreen') {
+                this.soundManager.playSE('powerUp');
                 this.setupTitleScreen();
             }
         });
@@ -97,6 +113,11 @@ class GameManager {
         this.messageEl.innerHTML = `STELLAR STRIKER<br><span style='font-size: 20px;'>HI-SCORE: ${this.highScore}</span><br><span style='font-size: 18px;'>Press Enter or Gamepad Button</span>`;
         this.actionButton.textContent = "ゲーム開始";
         this.gameOverlay.classList.add('active');
+        
+        // タイトルBGMを再生
+        if (this.soundManager.isInitialized) {
+            this.soundManager.playBGM('titleBGM');
+        }
         
         // タイトル画面の星を初期化
         if (this.titleStars.length === 0) {
@@ -123,6 +144,13 @@ class GameManager {
         
         if (stage === 1) {
             this.score = 0;
+            this.combo = 0;
+            this.comboTimer = 0;
+        }
+        
+        // ステージBGMを再生
+        if (this.soundManager.isInitialized) {
+            this.soundManager.playBGM('stageBGM');
         }
         
         // ステージデータ読み込み
@@ -137,6 +165,7 @@ class GameManager {
         this.bulletManager.clear();
         this.effectManager.clear();
         this.powerUpManager.clear();
+        this.visualEffects.cleanup();
         
         // 背景初期化
         this.background = { speed: 2, elements: [] };
@@ -239,11 +268,14 @@ class GameManager {
             // 射撃
             if (input.shoot && this.player.shoot()) {
                 this.bulletManager.addPlayerBullets(this.player, this.enemies);
+                this.soundManager.playSE('playerShoot');
             }
             
             // ボム使用（Bキーまたはゲームパッドボタン）
             if (input.bomb && this.player.useBomb()) {
                 this.useBomb();
+                this.soundManager.playSE('bomb');
+                this.visualEffects.startScreenShake(20, 500);
             }
         }
     }
@@ -260,6 +292,11 @@ class GameManager {
                 this.gameState = 'boss';
                 this.boss = new Boss(this.canvasWidth / 2, -120, this.currentStage);
                 this.boss.active = true;
+                
+                // ボスBGMに切り替え
+                if (this.soundManager.isInitialized) {
+                    this.soundManager.playBGM('bossBGM');
+                }
             }
             
             // 各要素の更新
@@ -269,6 +306,14 @@ class GameManager {
             this.bulletManager.update(this.canvasWidth, this.canvasHeight);
             this.effectManager.update();
             this.powerUpManager.update();
+            this.visualEffects.update(16.67); // 60FPS想定
+            
+            // コンボタイマー更新
+            if (this.comboTimer > 0) {
+                this.comboTimer--;
+            } else {
+                this.combo = 0;
+            }
             
             if (this.boss && this.boss.active) {
                 this.boss.update(this.player);
@@ -340,6 +385,7 @@ class GameManager {
             const bullet = enemy.shoot();
             if (bullet) {
                 this.bulletManager.addEnemyBullet(bullet.x, bullet.y, bullet.speed);
+                this.soundManager.playSE('enemyShoot');
             }
             
             // 画面外判定
@@ -372,30 +418,50 @@ class GameManager {
             // 無敵モード時はプレイヤーへのダメージを無視
             this.collisionManager.checkBulletEnemyCollisions(
                 this.bulletManager, this.enemies, this.effectManager, this.powerUpManager,
-                (score) => this.score += score
+                (score) => {
+                    this.score += score;
+                    this.onEnemyDestroyed(score);
+                }
             );
             
             if (this.boss && this.boss.active) {
                 this.collisionManager.checkBulletBossCollisions(
                     this.bulletManager, this.boss, this.effectManager, this.powerUpManager,
-                    (score) => this.score += score,
+                    (score) => {
+                        this.score += score;
+                        this.soundManager.playSE('bossHit');
+                        this.visualEffects.showDamageNumber(this.boss.centerX, this.boss.centerY, score);
+                    },
                     () => this.onBossDefeated()
                 );
             }
             
             // パワーアップは無敵モードでも取得可能
-            this.collisionManager.checkPlayerPowerUpCollisions(this.player, this.powerUpManager);
+            this.collisionManager.checkPlayerPowerUpCollisions(this.player, this.powerUpManager, 
+                (type, x, y) => this.onPowerUpCollected(type, x, y));
         } else {
             // 通常の衝突判定
             const gameOver = this.collisionManager.checkAllCollisions(
                 this.player, this.enemies, this.boss,
                 this.bulletManager, this.effectManager, this.powerUpManager,
-                (score) => this.score += score,
-                () => this.onBossDefeated()
+                (score) => {
+                    this.score += score;
+                    if (this.boss && this.boss.active) {
+                        this.soundManager.playSE('bossHit');
+                        this.visualEffects.showDamageNumber(this.boss.centerX, this.boss.centerY, score);
+                    } else {
+                        this.onEnemyDestroyed(score);
+                    }
+                },
+                () => this.onBossDefeated(),
+                (type, x, y) => this.onPowerUpCollected(type, x, y),
+                () => this.onPlayerDamaged()
             );
             
             if (gameOver) {
                 this.onGameOver();
+                this.soundManager.playSE('gameOver');
+                this.visualEffects.startScreenShake(15, 300);
             }
         }
     }
@@ -439,11 +505,71 @@ class GameManager {
     }
     
     /**
+     * プレイヤーダメージ時の処理
+     */
+    onPlayerDamaged() {
+        this.soundManager.playSE('damage');
+        this.visualEffects.startScreenShake(10, 300);
+        this.visualEffects.createParticles(this.player.centerX, this.player.centerY, 'damage', 15);
+    }
+    
+    /**
+     * パワーアップ取得時の処理
+     */
+    onPowerUpCollected(type, x, y) {
+        this.soundManager.playSE('powerUp');
+        this.visualEffects.createParticles(x, y, 'powerup', 30);
+        
+        // パワーアップタイプに応じたエフェクト
+        switch(type) {
+            case 'shield':
+                this.visualEffects.startScreenShake(5, 200);
+                break;
+            case 'bomb':
+                this.visualEffects.createParticles(this.player.centerX, this.player.centerY, 'powerup', 20);
+                break;
+        }
+    }
+    
+    /**
+     * 敵破壊時の処理
+     */
+    onEnemyDestroyed(score) {
+        this.soundManager.playSE('explosion');
+        
+        // コンボ処理
+        const now = Date.now();
+        if (now - this.lastKillTime < 2000) { // 2秒以内
+            this.combo++;
+            const comboBonus = this.combo * 10;
+            this.score += comboBonus;
+            
+            // コンボ表示
+            this.visualEffects.updateCombo(this.combo, this.canvasWidth / 2, 100);
+            if (this.combo > 1) {
+                this.visualEffects.showChainBonus(this.canvasWidth / 2, 130, comboBonus);
+            }
+        } else {
+            this.combo = 1;
+        }
+        this.lastKillTime = now;
+        this.comboTimer = 120; // 2秒
+        
+        // パーティクルエフェクト
+        this.visualEffects.createParticles(this.player.centerX, this.player.centerY, 'explosion', 15);
+    }
+    
+    /**
      * ボス撃破時の処理
      */
     onBossDefeated() {
         // ボスからパワーアップを確定ドロップ
         this.powerUpManager.spawn(this.boss.centerX, this.boss.centerY, true);
+        
+        // 大爆発エフェクト
+        this.visualEffects.createParticles(this.boss.centerX, this.boss.centerY, 'explosion', 50);
+        this.visualEffects.startScreenShake(30, 1000);
+        this.soundManager.playSE('stageClear');
         
         if (this.currentStage < 3) {
             this.gameState = 'stage_clear';
@@ -505,14 +631,30 @@ class GameManager {
      * すべてのゲーム要素を描画
      */
     drawAllGameElements() {
+        // 画面揺れの適用
+        this.visualEffects.applyScreenShake(this.ctx);
+        
         this.drawBackground();
         this.enemies.forEach(enemy => enemy.draw(this.ctx));
         this.powerUpManager.draw(this.ctx);
         if (this.player) this.player.draw(this.ctx);
+        
+        // 弾丸のトレイル追加
+        this.bulletManager.playerBullets.forEach(bullet => {
+            this.visualEffects.addTrail(bullet.x, bullet.y, '#FFFF00', 2);
+        });
+        
         this.bulletManager.draw(this.ctx);
         if (this.boss && this.boss.active) this.boss.draw(this.ctx);
         this.effectManager.draw(this.ctx);
+        
+        // ビジュアルエフェクトの描画
+        this.visualEffects.draw(this.ctx);
+        
         this.drawUI();
+        
+        // 画面揺れのリセット
+        this.visualEffects.resetScreenShake(this.ctx);
     }
 
     /**
@@ -600,6 +742,14 @@ class GameManager {
         
         this.ctx.textAlign = 'right';
         this.ctx.fillText(`HI-SCORE: ${this.highScore}`, this.canvasWidth - 10, 10);
+        
+        // コンボ表示
+        if (this.combo > 1) {
+            this.ctx.fillStyle = '#FFD700';
+            this.ctx.font = 'bold 24px Inter';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(`${this.combo} COMBO!`, this.canvasWidth / 2, 60);
+        }
         
         // ボスのHPバー
         if (this.boss && this.boss.active && this.boss.vulnerable) {
