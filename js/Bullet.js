@@ -1,4 +1,5 @@
 import GameObject from './GameObject.js';
+import { BulletPool } from './ObjectPool.js';
 
 /**
  * 弾丸クラス
@@ -131,6 +132,12 @@ class BulletManager {
         this.playerBullets = [];
         this.enemyBullets = [];
         this.bossBullets = [];
+        
+        // オブジェクトプールを使用
+        this.useObjectPool = true;
+        this.playerBulletPool = new BulletPool(300);
+        this.enemyBulletPool = new BulletPool(200);
+        this.bossBulletPool = new BulletPool(200);
     }
 
     /**

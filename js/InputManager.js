@@ -1,8 +1,10 @@
+import { TouchControls } from './TouchControls.js';
+
 /**
  * 入力管理クラス
  */
 class InputManager {
-    constructor() {
+    constructor(canvas) {
         this.keys = {
             ArrowUp: false,
             ArrowDown: false,
@@ -16,9 +18,15 @@ class InputManager {
         
         this.gamepadIndex = null;
         this.cooldown = 0;
+        this.touchControls = null;
         
         // キーボードイベントの設定
         this.setupKeyboardEvents();
+        
+        // タッチコントロールの設定
+        if (canvas) {
+            this.touchControls = new TouchControls(canvas, this);
+        }
     }
 
     /**
@@ -57,6 +65,11 @@ class InputManager {
         // クールダウン処理
         if (this.cooldown > 0) {
             this.cooldown--;
+        }
+        
+        // タッチコントロールの更新
+        if (this.touchControls) {
+            this.touchControls.update();
         }
 
         // キーボード入力

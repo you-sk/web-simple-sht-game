@@ -9,6 +9,7 @@ import { PowerUpManager } from './PowerUp.js';
 import { stageData, enemyData, tileColors } from './StageData.js';
 import SoundManager from './SoundManager.js';
 import VisualEffects from './VisualEffects.js';
+import { DifficultyManager } from './DifficultyManager.js';
 
 /**
  * ゲーム全体を管理するクラス
@@ -30,7 +31,7 @@ class GameManager {
         this.TOTAL_GAME_FRAMES = this.STAGE_DURATION_SECONDS * this.FRAMES_PER_SECOND;
         
         // ゲーム状態
-        this.gameState = 'title'; // title, stage_start, playing, boss, gameover, game_clear, stage_clear, endscreen
+        this.gameState = 'title'; // title, difficulty_select, stage_start, playing, boss, gameover, game_clear, stage_clear, endscreen
         this.gameFrame = 0;
         this.score = 0;
         this.highScore = parseInt(localStorage.getItem('stellarStrikerHighScore')) || 0;
@@ -44,11 +45,12 @@ class GameManager {
         this.boss = null;
         this.bulletManager = new BulletManager();
         this.effectManager = new EffectManager();
-        this.inputManager = new InputManager();
+        this.inputManager = new InputManager(canvas);
         this.collisionManager = new CollisionManager();
         this.powerUpManager = new PowerUpManager();
         this.soundManager = new SoundManager();
         this.visualEffects = new VisualEffects(canvas);
+        this.difficultyManager = new DifficultyManager();
         
         // コンボシステム
         this.combo = 0;
@@ -92,7 +94,8 @@ class GameManager {
             
             if (this.gameState === 'title') {
                 this.soundManager.playSE('powerUp');
-                this.init(1);
+                this.gameState = 'difficulty_select';
+                this.hideOverlay();
             } else if (this.gameState === 'endscreen') {
                 this.soundManager.playSE('powerUp');
                 this.setupTitleScreen();
@@ -202,6 +205,11 @@ class GameManager {
                 this.updateTitleScreen();
                 this.drawTitleScreen();
                 break;
+            case 'difficulty_select':
+                this.updateTitleScreen();
+                this.drawTitleScreen();
+                this.difficultyManager.renderDifficultySelection(this.ctx, this.canvasWidth, this.canvasHeight);
+                break;
             case 'stage_start':
                 this.updateBackground();
                 this.drawAllGameElements();
@@ -247,6 +255,15 @@ class GameManager {
      */
     handleInput() {
         const input = this.inputManager.getInput();
+        
+        // 難易度選択画面での入力
+        if (this.gameState === 'difficulty_select') {
+            if (this.difficultyManager.handleDifficultySelection(input)) {
+                this.soundManager.playSE('powerUp');
+                this.init(1);
+            }
+            return;
+        }
         
         // タイトル画面やエンド画面での入力
         if ((this.gameState === 'title' || this.gameState === 'endscreen') && input.action) {
@@ -373,7 +390,7 @@ class GameManager {
         while (this.enemyDataIndex < this.enemyData.length && 
                this.enemyData[this.enemyDataIndex].time <= this.gameFrame) {
             const data = this.enemyData[this.enemyDataIndex];
-            this.enemies.push(EnemyFactory.create(data));
+            this.enemies.push(EnemyFactory.create(data, this.difficultyManager));
             this.enemyDataIndex++;
         }
         
@@ -419,7 +436,7 @@ class GameManager {
             this.collisionManager.checkBulletEnemyCollisions(
                 this.bulletManager, this.enemies, this.effectManager, this.powerUpManager,
                 (score) => {
-                    this.score += score;
+                    this.score += this.difficultyManager.getScore(score);
                     this.onEnemyDestroyed(score);
                 }
             );
@@ -428,7 +445,7 @@ class GameManager {
                 this.collisionManager.checkBulletBossCollisions(
                     this.bulletManager, this.boss, this.effectManager, this.powerUpManager,
                     (score) => {
-                        this.score += score;
+                        this.score += this.difficultyManager.getScore(score);
                         this.soundManager.playSE('bossHit');
                         this.visualEffects.showDamageNumber(this.boss.centerX, this.boss.centerY, score);
                     },
@@ -445,7 +462,7 @@ class GameManager {
                 this.player, this.enemies, this.boss,
                 this.bulletManager, this.effectManager, this.powerUpManager,
                 (score) => {
-                    this.score += score;
+                    this.score += this.difficultyManager.getScore(score);
                     if (this.boss && this.boss.active) {
                         this.soundManager.playSE('bossHit');
                         this.visualEffects.showDamageNumber(this.boss.centerX, this.boss.centerY, score);
@@ -478,6 +495,7 @@ class GameManager {
         this.enemies.forEach(enemy => {
             if (enemy.active) {
                 enemy.hp -= 5;
+                this.visualEffects.showDamageNumber(enemy.centerX, enemy.centerY, 5);
                 if (enemy.hp <= 0) {
                     enemy.active = false;
                     this.effectManager.createExplosion(enemy.centerX, enemy.centerY);
@@ -491,6 +509,7 @@ class GameManager {
         // ボスにダメージを与える
         if (this.boss && this.boss.active && this.boss.vulnerable) {
             this.boss.hp -= 10;
+            this.visualEffects.showDamageNumber(this.boss.centerX, this.boss.centerY, 10);
             if (this.boss.hp <= 0) {
                 this.boss.active = false;
                 this.effectManager.createBossExplosion(this.boss.centerX, this.boss.centerY);
@@ -701,6 +720,14 @@ class GameManager {
         this.ctx.textBaseline = 'top';
         this.ctx.fillText(`SCORE: ${this.score}`, 10, 10);
         this.ctx.fillText(`STAGE: ${this.currentStage}`, 10, 35);
+        
+        // 難易度表示
+        const difficulty = this.difficultyManager.getDifficulty();
+        this.ctx.fillStyle = difficulty.color;
+        this.ctx.font = '16px Inter';
+        this.ctx.fillText(difficulty.name, 10, 685);
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = '20px Inter';
         
         // ライフ表示
         if (this.player) {

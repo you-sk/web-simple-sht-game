@@ -11,6 +11,8 @@ class Enemy extends GameObject {
         this.score = 100;
         this.shotCooldown = 60;
         this.color = '#e74c3c';
+        this.difficultyMultiplier = 1;
+        this.bulletSpeedMultiplier = 1;
         
         // タイプ別の初期設定
         this.initByType();
@@ -78,7 +80,8 @@ class Enemy extends GameObject {
                 player.centerY - this.centerY,
                 player.centerX - this.centerX
             );
-            const speed = 2;
+            const baseSpeed = 2;
+            const speed = this.difficultyMultiplier ? this.difficultyMultiplier * baseSpeed : baseSpeed;
             this.velocity.x = Math.cos(angle) * speed;
             this.velocity.y = Math.sin(angle) * speed;
         }
@@ -151,7 +154,7 @@ class Enemy extends GameObject {
                 x: this.centerX,
                 y: this.centerY + this.height / 2,
                 radius: 5,
-                speed: 4,
+                speed: this.bulletSpeedMultiplier ? this.bulletSpeedMultiplier * 4 : 4,
                 color: '#f39c12'
             };
         }
@@ -178,13 +181,24 @@ class EnemyFactory {
     /**
      * 敵を生成
      * @param {Object} data - 敵データ
+     * @param {DifficultyManager} difficultyManager - 難易度マネージャー
      */
-    static create(data) {
+    static create(data, difficultyManager) {
         const enemy = new Enemy(data.x, data.y || -30, data.type);
         
-        // 速度設定
-        enemy.velocity.x = data.vx || 0;
-        enemy.velocity.y = data.vy || 2;
+        // 難易度調整
+        if (difficultyManager) {
+            enemy.hp = difficultyManager.getEnemyHealth(enemy.hp);
+            enemy.score = difficultyManager.getScore(enemy.score);
+            enemy.difficultyMultiplier = difficultyManager.getDifficulty().enemySpeedMultiplier;
+            enemy.bulletSpeedMultiplier = difficultyManager.getDifficulty().bulletSpeedMultiplier;
+        }
+        
+        // 速度設定（難易度調整込み）
+        const baseVx = data.vx || 0;
+        const baseVy = data.vy || 2;
+        enemy.velocity.x = difficultyManager ? difficultyManager.getEnemySpeed(baseVx) : baseVx;
+        enemy.velocity.y = difficultyManager ? difficultyManager.getEnemySpeed(baseVy) : baseVy;
         
         return enemy;
     }
