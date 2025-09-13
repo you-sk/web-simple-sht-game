@@ -320,10 +320,11 @@ class VisualEffects {
         const bonusDisplay = {
             x: x,
             y: y,
-            text: text,
+            damage: text,  // damageプロパティに統一
             life: 1.0,
             vy: -1,
-            color: '#00FF00'
+            color: '#00FF00',
+            scale: 1.0
         };
         
         this.damageNumbers.push(bonusDisplay);

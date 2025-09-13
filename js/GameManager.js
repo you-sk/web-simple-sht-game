@@ -95,9 +95,10 @@ class GameManager {
             if (this.gameState === 'title') {
                 this.soundManager.playSE('powerUp');
                 this.gameState = 'difficulty_select';
-                this.hideOverlay();
                 // タイトル画面のオーバーレイを完全に非表示
                 this.gameOverlay.classList.remove('active');
+                this.messageEl.innerHTML = '';
+                this.actionButton.style.display = 'none';
             } else if (this.gameState === 'endscreen') {
                 this.soundManager.playSE('powerUp');
                 this.setupTitleScreen();
@@ -117,6 +118,7 @@ class GameManager {
         this.gameState = 'title';
         this.messageEl.innerHTML = `STELLAR STRIKER<br><span style='font-size: 20px;'>HI-SCORE: ${this.highScore}</span><br><span style='font-size: 18px;'>Press Enter or Gamepad Button</span>`;
         this.actionButton.textContent = "ゲーム開始";
+        this.actionButton.style.display = 'block';  // ボタンを表示
         this.gameOverlay.classList.add('active');
         
         // タイトルBGMを再生
