@@ -1,5 +1,6 @@
 export class DifficultyManager {
     constructor() {
+        this.selectionCooldown = 0;
         this.difficulties = {
             easy: {
                 name: 'EASY',
@@ -132,7 +133,8 @@ export class DifficultyManager {
     renderDifficultySelection(ctx, canvasWidth, canvasHeight) {
         ctx.save();
         
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        // 背景を完全に黒でクリア
+        ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
         
         ctx.fillStyle = 'white';
@@ -183,11 +185,19 @@ export class DifficultyManager {
         const difficulties = Object.keys(this.difficulties);
         const currentIndex = difficulties.indexOf(this.currentDifficulty);
         
+        // クールダウン処理
+        if (this.selectionCooldown > 0) {
+            this.selectionCooldown--;
+            return false;
+        }
+        
         if (input.up && currentIndex > 0) {
             this.currentDifficulty = difficulties[currentIndex - 1];
+            this.selectionCooldown = 15; // 0.25秒のクールダウン（60FPS想定）
             return false;
         } else if (input.down && currentIndex < difficulties.length - 1) {
             this.currentDifficulty = difficulties[currentIndex + 1];
+            this.selectionCooldown = 15; // 0.25秒のクールダウン
             return false;
         } else if (input.action) {
             return true;

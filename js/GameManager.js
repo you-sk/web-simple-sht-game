@@ -96,6 +96,8 @@ class GameManager {
                 this.soundManager.playSE('powerUp');
                 this.gameState = 'difficulty_select';
                 this.hideOverlay();
+                // タイトル画面のオーバーレイを完全に非表示
+                this.gameOverlay.classList.remove('active');
             } else if (this.gameState === 'endscreen') {
                 this.soundManager.playSE('powerUp');
                 this.setupTitleScreen();
@@ -206,8 +208,10 @@ class GameManager {
                 this.drawTitleScreen();
                 break;
             case 'difficulty_select':
-                this.updateTitleScreen();
-                this.drawTitleScreen();
+                // 背景をクリア
+                this.ctx.fillStyle = '#000020';
+                this.ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+                // 難易度選択画面を描画
                 this.difficultyManager.renderDifficultySelection(this.ctx, this.canvasWidth, this.canvasHeight);
                 break;
             case 'stage_start':
